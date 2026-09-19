@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>סריקת כרטיסים</title>
+<link rel="icon" type="image/png" sizes="32x32" href="/qr-scanner/favicon-32.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/qr-scanner/favicon.png">
+<link rel="apple-touch-icon" href="/qr-scanner/apple-touch-icon.png">
 <style>
   :root {
     --green: #1a9c4c;
@@ -65,8 +68,7 @@
     opacity: 0; pointer-events: none;
     transition: opacity 120ms ease-out;
   }
-  #resultOverlay.show { opacity: 1; }
-  #resultOverlay.error.show { pointer-events: auto; cursor: pointer; }
+  #resultOverlay.show { opacity: 1; pointer-events: auto; cursor: pointer; }
   #resultOverlay.success { background: var(--green); }
   #resultOverlay.used { background: var(--red); }
   #resultOverlay.unknown { background: var(--gray); }
@@ -177,8 +179,15 @@
 
   let busy = false;
   const lastScan = { text: null, time: 0 };
+  let hideTimer = null;
+
+  function dismissResult() {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    els.overlay.classList.remove("show");
+  }
 
   function showResult(kind, message, meta) {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
     els.overlay.className = kind;
     els.icon.textContent = kind === "success" ? "✓" : kind === "used" ? "✕" : kind === "error" ? "!" : "•";
     els.message.textContent = message || "";
@@ -210,22 +219,18 @@
     requestAnimationFrame(() => els.overlay.classList.add("show"));
     feedback(kind === "success" ? "success" : kind === "used" ? "used" : "other");
 
-    if (kind === "error") {
-      // Stay on screen (with a technical detail line, when available) until
-      // tapped, instead of auto-hiding, so staff have time to read/report it.
-      if (meta && meta.detail) {
-        const hint = document.createElement("div");
-        hint.style.fontSize = "13px";
-        hint.style.marginTop = "14px";
-        hint.textContent = "הקישו למסך כדי להמשיך";
-        els.meta.appendChild(hint);
-      } else {
-        setTimeout(() => { els.overlay.classList.remove("show"); }, RESULT_DISPLAY_MS);
-      }
+    if (kind === "error" && meta && meta.detail) {
+      // Stay on screen (with the technical detail line) until tapped,
+      // instead of auto-hiding, so staff have time to read/report it.
+      const hint = document.createElement("div");
+      hint.style.fontSize = "13px";
+      hint.style.marginTop = "14px";
+      hint.textContent = "הקישו למסך כדי להמשיך";
+      els.meta.appendChild(hint);
     } else {
-      setTimeout(() => {
-        els.overlay.classList.remove("show");
-      }, RESULT_DISPLAY_MS);
+      // A tap dismisses early (see the overlay click listener below); this
+      // timer is just the fallback for staff who don't tap.
+      hideTimer = setTimeout(() => { hideTimer = null; els.overlay.classList.remove("show"); }, RESULT_DISPLAY_MS);
     }
   }
 
@@ -273,11 +278,7 @@
 
   function onScanFailure() { /* no QR in frame this tick - normal, ignore */ }
 
-  els.overlay.addEventListener("click", () => {
-    if (els.overlay.classList.contains("error")) {
-      els.overlay.classList.remove("show");
-    }
-  });
+  els.overlay.addEventListener("click", dismissResult);
 
   els.startBtn.addEventListener("click", async () => {
     // unlock audio on iOS/Android with this user gesture
