@@ -55,7 +55,6 @@
     <thead>
       <tr>
         <th>תאריך ושעה</th>
-        <th>שם רוכש</th>
         <th>מס׳ הזמנה</th>
         <th>סטטוס</th>
         <th>כרטיסים</th>
@@ -132,7 +131,6 @@
       const tickets = (r.used_count != null && r.total_count != null) ? (r.used_count + " / " + r.total_count) : "";
       tr.innerHTML =
         "<td>" + esc(dt) + "</td>" +
-        "<td>" + esc(r.purchaser) + "</td>" +
         "<td>" + esc(r.order_id) + "</td>" +
         "<td class=\"status-cell\">" + esc(statusLabel(r.status)) + "</td>" +
         "<td>" + esc(tickets) + "</td>" +

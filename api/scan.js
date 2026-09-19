@@ -76,8 +76,8 @@ async function logScan(targetUrl, parsed) {
   try {
     const sql = neon(process.env.DATABASE_URL);
     await sql`
-      INSERT INTO scans (purchaser, order_id, used_count, total_count, status, message, sid, idqr, did)
-      VALUES (${parsed.name}, ${parsed.order}, ${parsed.usedCount}, ${parsed.totalCount}, ${parsed.status}, ${parsed.message},
+      INSERT INTO scans (order_id, used_count, total_count, status, message, sid, idqr, did)
+      VALUES (${parsed.order}, ${parsed.usedCount}, ${parsed.totalCount}, ${parsed.status}, ${parsed.message},
               ${targetUrl.searchParams.get("sid")}, ${targetUrl.searchParams.get("idqr")}, ${targetUrl.searchParams.get("did")})
     `;
     return true;
