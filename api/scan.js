@@ -9,6 +9,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import { decodeTicketHtml, parseTicketHtml } from "../lib/ticketParser.js";
+import { legacyFetch } from "../lib/legacyFetch.js";
 
 // Only these hosts may be fetched. Prevents this endpoint being abused as an
 // open proxy for arbitrary URLs (SSRF) via a crafted QR code.
@@ -42,8 +43,7 @@ export default async function handler(req, res) {
 
   let upstream;
   try {
-    upstream = await fetch(targetUrl.toString(), {
-      redirect: "follow",
+    upstream = await legacyFetch(targetUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
@@ -63,13 +63,12 @@ export default async function handler(req, res) {
     return;
   }
 
-  const buffer = await upstream.arrayBuffer();
-  const html = decodeTicketHtml(buffer);
+  const html = decodeTicketHtml(upstream.body);
   const parsed = parseTicketHtml(html);
 
   const logged = await logScan(targetUrl, parsed);
 
-  res.status(200).json({ ok: true, httpStatus: upstream.status, ...parsed, logged });
+  res.status(200).json({ ok: true, httpStatus: upstream.statusCode, ...parsed, logged });
 }
 
 async function logScan(targetUrl, parsed) {
