@@ -128,9 +128,7 @@
 
   const ALLOWED_HOSTS = ["www.matnas-kz.co.il", "matnas-kz.co.il"];
 
-  const RESULT_DISPLAY_MS = 1400;   // how long the colored result stays on screen
   const DUPLICATE_COOLDOWN_MS = 5000; // ignore re-scanning the *same* code within this window
-  const BUSY_LOCK_MS = 900;         // minimum gap before the next scan is accepted at all
 
   const els = {
     startScreen: document.getElementById("startScreen"),
@@ -179,15 +177,14 @@
 
   let busy = false;
   const lastScan = { text: null, time: 0 };
-  let hideTimer = null;
 
   function dismissResult() {
-    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    if (!els.overlay.classList.contains("show")) return;
     els.overlay.classList.remove("show");
+    busy = false; // scanning stays paused until staff taps the result away
   }
 
   function showResult(kind, message, meta) {
-    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
     els.overlay.className = kind;
     els.icon.textContent = kind === "success" ? "✓" : kind === "used" ? "✕" : kind === "error" ? "!" : "•";
     els.message.textContent = message || "";
@@ -219,19 +216,14 @@
     requestAnimationFrame(() => els.overlay.classList.add("show"));
     feedback(kind === "success" ? "success" : kind === "used" ? "used" : "other");
 
-    if (kind === "error" && meta && meta.detail) {
-      // Stay on screen (with the technical detail line) until tapped,
-      // instead of auto-hiding, so staff have time to read/report it.
-      const hint = document.createElement("div");
-      hint.style.fontSize = "13px";
-      hint.style.marginTop = "14px";
-      hint.textContent = "הקישו למסך כדי להמשיך";
-      els.meta.appendChild(hint);
-    } else {
-      // A tap dismisses early (see the overlay click listener below); this
-      // timer is just the fallback for staff who don't tap.
-      hideTimer = setTimeout(() => { hideTimer = null; els.overlay.classList.remove("show"); }, RESULT_DISPLAY_MS);
-    }
+    // Stays on screen until tapped (see the overlay click listener below) -
+    // no auto-hide timer, so staff set their own pace instead of racing a clock.
+    const hint = document.createElement("div");
+    hint.style.fontSize = "13px";
+    hint.style.marginTop = "14px";
+    hint.style.opacity = "0.85";
+    hint.textContent = "הקישו למסך להמשך";
+    els.meta.appendChild(hint);
   }
 
   async function handleDecodedText(text) {
@@ -271,9 +263,8 @@
       showResult("error", "שגיאת רשת - נסו שוב");
       counters.err++;
       renderCounters();
-    } finally {
-      setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
     }
+    // busy stays true until dismissResult() runs, on tap
   }
 
   function onScanFailure() { /* no QR in frame this tick - normal, ignore */ }
