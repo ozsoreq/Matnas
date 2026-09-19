@@ -62,10 +62,11 @@ configuring anymore: the page just calls `/api/scan` on its own origin.
 ## Viewing the guest log
 
 Every scan (success or duplicate) is written to Neon with the date/time,
-purchaser name, order number, and redemption count. Open `/guests.html` on
-your Vercel deployment, enter the `ADMIN_KEY` you set above, and click
-**טען** to see the full list, or **ייצוא ל-CSV** to download it for
-Excel/Sheets.
+order number, and redemption count - purchaser names are shown live on the
+scanner popup but intentionally not persisted, to keep this log free of
+personal data beyond ticket/order identifiers. Open `/guests.html` on your
+Vercel deployment, enter the `ADMIN_KEY` you set above, and click **טען** to
+see the full list, or **ייצוא ל-CSV** to download it for Excel/Sheets.
 
 ## Notes / limits
 

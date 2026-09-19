@@ -2,10 +2,12 @@
 -- SQL Editor -> paste and run), before setting DATABASE_URL in Vercel.
 -- See README.md in qr-scanner/ for the full setup steps.
 
+-- No purchaser/name column by design: names are shown live on the scanner
+-- popup (straight from the ticket site's response) but not persisted, to
+-- keep this log free of PII beyond the ticket/order identifiers below.
 CREATE TABLE IF NOT EXISTS scans (
   id SERIAL PRIMARY KEY,
   scanned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  purchaser TEXT,             -- name on the order (שם המזמין)
   order_id TEXT,              -- order number shown on the ticket (סידורי)
   used_count INTEGER,         -- tickets redeemed so far in this order, per the ticket system
   total_count INTEGER,        -- total tickets in this order
