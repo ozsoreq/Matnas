@@ -191,12 +191,17 @@
     els.meta.innerHTML = "";
     if (meta && meta.name) {
       const d = document.createElement("div");
-      d.textContent = meta.name;
+      d.textContent = "שם הרוכש: " + meta.name;
       els.meta.appendChild(d);
     }
     if (meta && meta.order) {
       const d = document.createElement("div");
       d.textContent = "מס׳ הזמנה: " + meta.order;
+      els.meta.appendChild(d);
+    }
+    if (meta && meta.usedCount != null && meta.totalCount != null) {
+      const d = document.createElement("div");
+      d.textContent = "כרטיסים שמומשו: " + meta.usedCount + " מתוך " + meta.totalCount;
       els.meta.appendChild(d);
     }
     requestAnimationFrame(() => els.overlay.classList.add("show"));
