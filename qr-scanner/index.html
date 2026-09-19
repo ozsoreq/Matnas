@@ -58,6 +58,7 @@
   #counters span b { font-size: 16px; }
   .cnt-ok b { color: var(--green); }
   .cnt-used b { color: var(--red); }
+  .cnt-err b { color: var(--orange); }
 
   /* ---- result overlay ---- */
   #resultOverlay {
@@ -104,6 +105,7 @@
       <span>סה"כ: <b id="cntTotal">0</b></span>
       <span class="cnt-ok">אושרו: <b id="cntOk">0</b></span>
       <span class="cnt-used">כפולים: <b id="cntUsed">0</b></span>
+      <span class="cnt-err">שגיאות: <b id="cntErr">0</b></span>
     </div>
   </div>
 
@@ -144,17 +146,19 @@
     cntTotal: document.getElementById("cntTotal"),
     cntOk: document.getElementById("cntOk"),
     cntUsed: document.getElementById("cntUsed"),
+    cntErr: document.getElementById("cntErr"),
   };
 
   if (!PROXY_URL) {
     els.configWarning.style.display = "block";
   }
 
-  const counters = { total: 0, ok: 0, used: 0 };
+  const counters = { total: 0, ok: 0, used: 0, err: 0 };
   function renderCounters() {
     els.cntTotal.textContent = counters.total;
     els.cntOk.textContent = counters.ok;
     els.cntUsed.textContent = counters.used;
+    els.cntErr.textContent = counters.err;
   }
 
   let audioCtx = null;
@@ -224,11 +228,11 @@
     lastScan.text = text;
     lastScan.time = now;
     busy = true;
-    counters.total++;
-    renderCounters();
 
     if (!PROXY_URL) {
       showResult("error", "לא הוגדרה כתובת שרת (PROXY_URL)");
+      counters.err++;
+      renderCounters();
       setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
       return;
     }
@@ -239,18 +243,24 @@
 
       if (!data.ok) {
         showResult("error", data.message || "שגיאה");
+        counters.err++;
       } else if (data.status === "success") {
+        counters.total++;
         counters.ok++;
         showResult("success", data.message, data);
       } else if (data.status === "used") {
+        counters.total++;
         counters.used++;
         showResult("used", data.message, data);
       } else {
+        counters.total++;
         showResult("unknown", data.message || "תגובה לא ידועה", data);
       }
       renderCounters();
     } catch (e) {
       showResult("error", "שגיאת רשת - נסו שוב");
+      counters.err++;
+      renderCounters();
     } finally {
       setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
     }
