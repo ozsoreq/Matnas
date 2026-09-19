@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>סריקת כרטיסים</title>
+<style>
+  :root {
+    --green: #1a9c4c;
+    --red: #d92b2b;
+    --gray: #4a5568;
+    --orange: #d98a1a;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; width: 100%;
+    background: #000; color: #fff;
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  #app { position: fixed; inset: 0; }
+
+  /* ---- start screen ---- */
+  #startScreen {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #111; gap: 24px; padding: 24px; text-align: center;
+  }
+  #startScreen h1 { font-size: 22px; margin: 0; }
+  #startScreen p { color: #aaa; margin: 0; font-size: 15px; line-height: 1.5; max-width: 320px; }
+  #startBtn {
+    font-size: 20px; font-weight: 700; padding: 18px 48px; border-radius: 14px;
+    border: none; background: var(--green); color: #fff; cursor: pointer;
+  }
+  #startBtn:active { filter: brightness(0.9); }
+  #configWarning {
+    display: none; color: #ffb3b3; font-size: 13px; max-width: 320px;
+  }
+
+  /* ---- camera ---- */
+  #reader { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #reader video { width: 100% !important; height: 100% !important; object-fit: cover; }
+  /* html5-qrcode injects its own scan-region canvas/border; hide the default
+     ugly file-scan UI bits we don't use */
+  #reader__dashboard_section_csr { display: none !important; }
+  #reader__scan_region { background: transparent !important; }
+
+  /* ---- top bar ---- */
+  #topBar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; padding-top: max(10px, env(safe-area-inset-top));
+    background: linear-gradient(to bottom, rgba(0,0,0,.75), transparent);
+    font-size: 14px; pointer-events: none;
+  }
+  #counters { display: flex; gap: 14px; font-variant-numeric: tabular-nums; }
+  #counters span b { font-size: 16px; }
+  .cnt-ok b { color: var(--green); }
+  .cnt-used b { color: var(--red); }
+
+  /* ---- result overlay ---- */
+  #resultOverlay {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+    opacity: 0; pointer-events: none;
+    transition: opacity 120ms ease-out;
+  }
+  #resultOverlay.show { opacity: 1; }
+  #resultOverlay.success { background: var(--green); }
+  #resultOverlay.used { background: var(--red); }
+  #resultOverlay.unknown { background: var(--gray); }
+  #resultOverlay.error { background: var(--orange); }
+
+  #resultIcon { font-size: 84px; line-height: 1; margin-bottom: 6px; }
+  #resultMessage { font-size: 30px; font-weight: 800; white-space: pre-line; line-height: 1.25; }
+  #resultMeta { margin-top: 16px; font-size: 18px; opacity: .9; }
+  #resultMeta div { margin-top: 4px; }
+
+  /* ---- scan hint ---- */
+  #hint {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 15;
+    text-align: center; padding: 18px; padding-bottom: max(18px, env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(0,0,0,.75), transparent);
+    font-size: 15px; color: #eee; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="startScreen">
+    <h1>סריקת כרטיסים מהירה</h1>
+    <p>מצלמים את הברקוד/QR שעל הכרטיס. התוצאה תוצג ישירות על המסך בלי לצאת מהעמוד, כדי לאפשר סריקה רציפה של איש אחד לשנייה־שתיים.</p>
+    <button id="startBtn">התחל סריקה</button>
+    <p id="configWarning">⚠️ צריך להגדיר קודם את כתובת ה־PROXY_URL בתוך index.html (ראו worker.js / README).</p>
+  </div>
+
+  <div id="reader"></div>
+
+  <div id="topBar">
+    <div id="counters">
+      <span>סה"כ: <b id="cntTotal">0</b></span>
+      <span class="cnt-ok">אושרו: <b id="cntOk">0</b></span>
+      <span class="cnt-used">כפולים: <b id="cntUsed">0</b></span>
+    </div>
+  </div>
+
+  <div id="hint">כוונו את המצלמה לברקוד שעל הכרטיס</div>
+
+  <div id="resultOverlay">
+    <div id="resultIcon"></div>
+    <div id="resultMessage"></div>
+    <div id="resultMeta"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ------------------------------------------------------------------
+  // CONFIGURE THIS after deploying worker.js (see README.md)
+  // Example: "https://qr-ticket-proxy.yourname.workers.dev"
+  // ------------------------------------------------------------------
+  const PROXY_URL = "";
+
+  const ALLOWED_HOSTS = ["www.matnas-kz.co.il", "matnas-kz.co.il"];
+
+  const RESULT_DISPLAY_MS = 1400;   // how long the colored result stays on screen
+  const DUPLICATE_COOLDOWN_MS = 5000; // ignore re-scanning the *same* code within this window
+  const BUSY_LOCK_MS = 900;         // minimum gap before the next scan is accepted at all
+
+  const els = {
+    startScreen: document.getElementById("startScreen"),
+    startBtn: document.getElementById("startBtn"),
+    configWarning: document.getElementById("configWarning"),
+    overlay: document.getElementById("resultOverlay"),
+    icon: document.getElementById("resultIcon"),
+    message: document.getElementById("resultMessage"),
+    meta: document.getElementById("resultMeta"),
+    cntTotal: document.getElementById("cntTotal"),
+    cntOk: document.getElementById("cntOk"),
+    cntUsed: document.getElementById("cntUsed"),
+  };
+
+  if (!PROXY_URL) {
+    els.configWarning.style.display = "block";
+  }
+
+  const counters = { total: 0, ok: 0, used: 0 };
+  function renderCounters() {
+    els.cntTotal.textContent = counters.total;
+    els.cntOk.textContent = counters.ok;
+    els.cntUsed.textContent = counters.used;
+  }
+
+  let audioCtx = null;
+  function beep(freq, durationMs) {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.frequency.value = freq;
+      osc.type = "sine";
+      gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + durationMs / 1000);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + durationMs / 1000);
+    } catch (e) { /* audio not available, ignore */ }
+  }
+  function feedback(kind) {
+    if (navigator.vibrate) {
+      navigator.vibrate(kind === "success" ? 60 : kind === "used" ? [50, 80, 50] : 40);
+    }
+    if (kind === "success") beep(880, 120);
+    else if (kind === "used") beep(220, 220);
+    else beep(440, 150);
+  }
+
+  let busy = false;
+  const lastScan = { text: null, time: 0 };
+
+  function showResult(kind, message, meta) {
+    els.overlay.className = kind;
+    els.icon.textContent = kind === "success" ? "✓" : kind === "used" ? "✕" : kind === "error" ? "!" : "•";
+    els.message.textContent = message || "";
+    els.meta.innerHTML = "";
+    if (meta && meta.name) {
+      const d = document.createElement("div");
+      d.textContent = "שם הרוכש: " + meta.name;
+      els.meta.appendChild(d);
+    }
+    if (meta && meta.order) {
+      const d = document.createElement("div");
+      d.textContent = "מס׳ הזמנה: " + meta.order;
+      els.meta.appendChild(d);
+    }
+    if (meta && meta.usedCount != null && meta.totalCount != null) {
+      const d = document.createElement("div");
+      d.textContent = "כרטיסים שמומשו: " + meta.usedCount + " מתוך " + meta.totalCount;
+      els.meta.appendChild(d);
+    }
+    requestAnimationFrame(() => els.overlay.classList.add("show"));
+    feedback(kind === "success" ? "success" : kind === "used" ? "used" : "other");
+
+    setTimeout(() => {
+      els.overlay.classList.remove("show");
+    }, RESULT_DISPLAY_MS);
+  }
+
+  async function handleDecodedText(text) {
+    const now = Date.now();
+    if (busy) return;
+    if (text === lastScan.text && now - lastScan.time < DUPLICATE_COOLDOWN_MS) return;
+
+    let url;
+    try { url = new URL(text); } catch { return; } // not a URL, ignore (stray QR in frame)
+    if (!ALLOWED_HOSTS.includes(url.hostname)) return; // not one of our tickets, ignore
+
+    lastScan.text = text;
+    lastScan.time = now;
+    busy = true;
+    counters.total++;
+    renderCounters();
+
+    if (!PROXY_URL) {
+      showResult("error", "לא הוגדרה כתובת שרת (PROXY_URL)");
+      setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
+      return;
+    }
+
+    try {
+      const resp = await fetch(PROXY_URL + "?url=" + encodeURIComponent(text));
+      const data = await resp.json();
+
+      if (!data.ok) {
+        showResult("error", data.message || "שגיאה");
+      } else if (data.status === "success") {
+        counters.ok++;
+        showResult("success", data.message, data);
+      } else if (data.status === "used") {
+        counters.used++;
+        showResult("used", data.message, data);
+      } else {
+        showResult("unknown", data.message || "תגובה לא ידועה", data);
+      }
+      renderCounters();
+    } catch (e) {
+      showResult("error", "שגיאת רשת - נסו שוב");
+    } finally {
+      setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
+    }
+  }
+
+  function onScanFailure() { /* no QR in frame this tick - normal, ignore */ }
+
+  els.startBtn.addEventListener("click", async () => {
+    // unlock audio on iOS/Android with this user gesture
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {}
+
+    els.startScreen.style.display = "none";
+
+    const html5QrCode = new Html5Qrcode("reader", { verbose: false });
+    try {
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        {
+          fps: 15,
+          qrbox: { width: 260, height: 260 },
+          aspectRatio: 1.0,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        },
+        (decodedText) => handleDecodedText(decodedText),
+        onScanFailure
+      );
+    } catch (err) {
+      els.startScreen.style.display = "flex";
+      alert("לא ניתן לפתוח את המצלמה: " + err);
+    }
+  });
+})();
+</script>
+</body>
+</html>

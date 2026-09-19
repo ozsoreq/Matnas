@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>רשימת אורחים</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px; font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    background: #f2f2f2; color: #222;
+  }
+  h1 { font-size: 20px; margin: 0 0 14px; }
+  #setup {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px;
+    background: #fff; padding: 12px; border-radius: 10px;
+  }
+  #setup input {
+    flex: 1; min-width: 180px; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 8px;
+  }
+  button {
+    padding: 10px 16px; font-size: 14px; font-weight: 700; border: none; border-radius: 8px;
+    background: #1a9c4c; color: #fff; cursor: pointer;
+  }
+  button.secondary { background: #4a5568; }
+  button:active { filter: brightness(0.9); }
+  #status { font-size: 13px; color: #666; margin-bottom: 10px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; font-size: 14px; }
+  th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid #eee; white-space: nowrap; }
+  th { background: #eee; position: sticky; top: 0; }
+  tr.success td.status-cell { color: #1a9c4c; font-weight: 700; }
+  tr.used td.status-cell { color: #d92b2b; font-weight: 700; }
+  #tableWrap { overflow-x: auto; }
+  #summary { margin: 10px 0; font-size: 14px; display: flex; gap: 16px; flex-wrap: wrap; }
+  #summary b { font-size: 16px; }
+</style>
+</head>
+<body>
+
+<h1>רשימת אורחים שנסרקו</h1>
+
+<div id="setup">
+  <input id="proxyUrl" placeholder="כתובת ה-Worker, למשל https://xxx.workers.dev">
+  <input id="adminKey" placeholder="מפתח ניהול (ADMIN_KEY)" type="password">
+  <button id="loadBtn">טען</button>
+  <button id="csvBtn" class="secondary">ייצוא ל-CSV</button>
+</div>
+
+<div id="status"></div>
+<div id="summary"></div>
+<div id="tableWrap">
+  <table id="table" style="display:none">
+    <thead>
+      <tr>
+        <th>תאריך ושעה</th>
+        <th>שם רוכש</th>
+        <th>מס׳ הזמנה</th>
+        <th>סטטוס</th>
+        <th>כרטיסים</th>
+        <th>sid</th>
+        <th>idqr</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const els = {
+    proxyUrl: document.getElementById("proxyUrl"),
+    adminKey: document.getElementById("adminKey"),
+    loadBtn: document.getElementById("loadBtn"),
+    csvBtn: document.getElementById("csvBtn"),
+    status: document.getElementById("status"),
+    summary: document.getElementById("summary"),
+    table: document.getElementById("table"),
+    tbody: document.getElementById("tbody"),
+  };
+
+  // Per-browser convenience only - not shared with anyone, never read by
+  // the guest data itself.
+  try {
+    els.proxyUrl.value = localStorage.getItem("qrProxyUrl") || "";
+    els.adminKey.value = localStorage.getItem("qrAdminKey") || "";
+  } catch (e) {}
+
+  function statusLabel(s) {
+    if (s === "success") return "אושר";
+    if (s === "used") return "כפול";
+    if (s === "error") return "שגיאה";
+    return "לא ידוע";
+  }
+
+  function buildUrl(path) {
+    const base = els.proxyUrl.value.trim().replace(/\/+$/, "");
+    const key = encodeURIComponent(els.adminKey.value.trim());
+    return base + path + "?key=" + key;
+  }
+
+  async function load() {
+    const base = els.proxyUrl.value.trim();
+    if (!base) { els.status.textContent = "נא להזין כתובת Worker."; return; }
+    try {
+      localStorage.setItem("qrProxyUrl", base);
+      localStorage.setItem("qrAdminKey", els.adminKey.value.trim());
+    } catch (e) {}
+
+    els.status.textContent = "טוען...";
+    try {
+      const resp = await fetch(buildUrl("/guests"));
+      if (resp.status === 401) { els.status.textContent = "מפתח ניהול שגוי."; return; }
+      const data = await resp.json();
+      if (!data.ok) { els.status.textContent = "שגיאה: " + (data.message || "לא ידוע"); return; }
+
+      render(data.results || []);
+      els.status.textContent = "עודכן: " + new Date().toLocaleString("he-IL");
+    } catch (e) {
+      els.status.textContent = "שגיאת רשת: " + e;
+    }
+  }
+
+  function render(rows) {
+    els.tbody.innerHTML = "";
+    let ok = 0, used = 0;
+    for (const r of rows) {
+      if (r.status === "success") ok++;
+      else if (r.status === "used") used++;
+
+      const tr = document.createElement("tr");
+      tr.className = r.status || "";
+      const dt = r.scanned_at ? new Date(r.scanned_at).toLocaleString("he-IL") : "";
+      const tickets = (r.used_count != null && r.total_count != null) ? (r.used_count + " / " + r.total_count) : "";
+      tr.innerHTML =
+        "<td>" + esc(dt) + "</td>" +
+        "<td>" + esc(r.purchaser) + "</td>" +
+        "<td>" + esc(r.order_id) + "</td>" +
+        "<td class=\"status-cell\">" + esc(statusLabel(r.status)) + "</td>" +
+        "<td>" + esc(tickets) + "</td>" +
+        "<td>" + esc(r.sid) + "</td>" +
+        "<td>" + esc(r.idqr) + "</td>";
+      els.tbody.appendChild(tr);
+    }
+    els.table.style.display = rows.length ? "table" : "none";
+    els.summary.innerHTML =
+      "<span>סה\"כ סריקות: <b>" + rows.length + "</b></span>" +
+      "<span>אושרו: <b>" + ok + "</b></span>" +
+      "<span>כפולים: <b>" + used + "</b></span>";
+  }
+
+  function esc(v) {
+    if (v === null || v === undefined) return "";
+    return String(v).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  els.loadBtn.addEventListener("click", load);
+  els.csvBtn.addEventListener("click", () => {
+    if (!els.proxyUrl.value.trim()) { els.status.textContent = "נא להזין כתובת Worker."; return; }
+    try {
+      localStorage.setItem("qrProxyUrl", els.proxyUrl.value.trim());
+      localStorage.setItem("qrAdminKey", els.adminKey.value.trim());
+    } catch (e) {}
+    window.location.href = buildUrl("/guests.csv");
+  });
+
+  if (els.proxyUrl.value && els.adminKey.value) load();
+})();
+</script>
+</body>
+</html>
