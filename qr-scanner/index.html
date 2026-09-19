@@ -34,9 +34,6 @@
     border: none; background: var(--green); color: #fff; cursor: pointer;
   }
   #startBtn:active { filter: brightness(0.9); }
-  #configWarning {
-    display: none; color: #ffb3b3; font-size: 13px; max-width: 320px;
-  }
 
   /* ---- camera ---- */
   #reader { position: fixed; inset: 0; width: 100%; height: 100%; }
@@ -95,7 +92,6 @@
     <h1>סריקת כרטיסים מהירה</h1>
     <p>מצלמים את הברקוד/QR שעל הכרטיס. התוצאה תוצג ישירות על המסך בלי לצאת מהעמוד, כדי לאפשר סריקה רציפה של איש אחד לשנייה־שתיים.</p>
     <button id="startBtn">התחל סריקה</button>
-    <p id="configWarning">⚠️ צריך להגדיר קודם את כתובת ה־PROXY_URL בתוך index.html (ראו worker.js / README).</p>
   </div>
 
   <div id="reader"></div>
@@ -123,11 +119,9 @@
 (function () {
   "use strict";
 
-  // ------------------------------------------------------------------
-  // CONFIGURE THIS after deploying worker.js (see README.md)
-  // Example: "https://qr-ticket-proxy.yourname.workers.dev"
-  // ------------------------------------------------------------------
-  const PROXY_URL = "";
+  // The API lives in this same Vercel deployment (see /api/scan.js), so no
+  // separate proxy URL needs to be configured here.
+  const SCAN_ENDPOINT = "/api/scan";
 
   const ALLOWED_HOSTS = ["www.matnas-kz.co.il", "matnas-kz.co.il"];
 
@@ -138,7 +132,6 @@
   const els = {
     startScreen: document.getElementById("startScreen"),
     startBtn: document.getElementById("startBtn"),
-    configWarning: document.getElementById("configWarning"),
     overlay: document.getElementById("resultOverlay"),
     icon: document.getElementById("resultIcon"),
     message: document.getElementById("resultMessage"),
@@ -148,10 +141,6 @@
     cntUsed: document.getElementById("cntUsed"),
     cntErr: document.getElementById("cntErr"),
   };
-
-  if (!PROXY_URL) {
-    els.configWarning.style.display = "block";
-  }
 
   const counters = { total: 0, ok: 0, used: 0, err: 0 };
   function renderCounters() {
@@ -229,16 +218,8 @@
     lastScan.time = now;
     busy = true;
 
-    if (!PROXY_URL) {
-      showResult("error", "לא הוגדרה כתובת שרת (PROXY_URL)");
-      counters.err++;
-      renderCounters();
-      setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
-      return;
-    }
-
     try {
-      const resp = await fetch(PROXY_URL + "?url=" + encodeURIComponent(text));
+      const resp = await fetch(SCAN_ENDPOINT + "?url=" + encodeURIComponent(text));
       const data = await resp.json();
 
       if (!data.ok) {
