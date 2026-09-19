@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/qr-scanner/index.html" },
+    { "source": "/guests", "destination": "/qr-scanner/guests.html" },
+    { "source": "/guests.html", "destination": "/qr-scanner/guests.html" }
+  ]
+}
