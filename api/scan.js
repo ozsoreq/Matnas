@@ -49,8 +49,17 @@ export default async function handler(req, res) {
           "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
       },
     });
-  } catch {
-    res.status(200).json({ ok: false, status: "error", message: "לא ניתן להתחבר לשרת הכרטיסים" });
+  } catch (e) {
+    // Log the real cause server-side (visible in Vercel's function logs) -
+    // the client only gets a generic Hebrew message so staff aren't shown
+    // raw error internals mid-event.
+    console.error("Failed to reach ticket site:", e);
+    res.status(200).json({
+      ok: false,
+      status: "error",
+      message: "לא ניתן להתחבר לשרת הכרטיסים",
+      errorDetail: String(e && e.cause ? e.cause : e),
+    });
     return;
   }
 

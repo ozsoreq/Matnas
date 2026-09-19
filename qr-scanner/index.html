@@ -66,6 +66,7 @@
     transition: opacity 120ms ease-out;
   }
   #resultOverlay.show { opacity: 1; }
+  #resultOverlay.error.show { pointer-events: auto; cursor: pointer; }
   #resultOverlay.success { background: var(--green); }
   #resultOverlay.used { background: var(--red); }
   #resultOverlay.unknown { background: var(--gray); }
@@ -197,12 +198,35 @@
       d.textContent = "כרטיסים שמומשו: " + meta.usedCount + " מתוך " + meta.totalCount;
       els.meta.appendChild(d);
     }
+    if (meta && meta.detail) {
+      const d = document.createElement("div");
+      d.style.fontSize = "13px";
+      d.style.opacity = "0.85";
+      d.style.marginTop = "10px";
+      d.style.wordBreak = "break-word";
+      d.textContent = meta.detail;
+      els.meta.appendChild(d);
+    }
     requestAnimationFrame(() => els.overlay.classList.add("show"));
     feedback(kind === "success" ? "success" : kind === "used" ? "used" : "other");
 
-    setTimeout(() => {
-      els.overlay.classList.remove("show");
-    }, RESULT_DISPLAY_MS);
+    if (kind === "error") {
+      // Stay on screen (with a technical detail line, when available) until
+      // tapped, instead of auto-hiding, so staff have time to read/report it.
+      if (meta && meta.detail) {
+        const hint = document.createElement("div");
+        hint.style.fontSize = "13px";
+        hint.style.marginTop = "14px";
+        hint.textContent = "הקישו למסך כדי להמשיך";
+        els.meta.appendChild(hint);
+      } else {
+        setTimeout(() => { els.overlay.classList.remove("show"); }, RESULT_DISPLAY_MS);
+      }
+    } else {
+      setTimeout(() => {
+        els.overlay.classList.remove("show");
+      }, RESULT_DISPLAY_MS);
+    }
   }
 
   async function handleDecodedText(text) {
@@ -223,7 +247,7 @@
       const data = await resp.json();
 
       if (!data.ok) {
-        showResult("error", data.message || "שגיאה");
+        showResult("error", data.message || "שגיאה", data.errorDetail ? { detail: data.errorDetail } : null);
         counters.err++;
       } else if (data.status === "success") {
         counters.total++;
@@ -248,6 +272,12 @@
   }
 
   function onScanFailure() { /* no QR in frame this tick - normal, ignore */ }
+
+  els.overlay.addEventListener("click", () => {
+    if (els.overlay.classList.contains("error")) {
+      els.overlay.classList.remove("show");
+    }
+  });
 
   els.startBtn.addEventListener("click", async () => {
     // unlock audio on iOS/Android with this user gesture
