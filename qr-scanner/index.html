@@ -34,9 +34,6 @@
     border: none; background: var(--green); color: #fff; cursor: pointer;
   }
   #startBtn:active { filter: brightness(0.9); }
-  #configWarning {
-    display: none; color: #ffb3b3; font-size: 13px; max-width: 320px;
-  }
 
   /* ---- camera ---- */
   #reader { position: fixed; inset: 0; width: 100%; height: 100%; }
@@ -58,6 +55,7 @@
   #counters span b { font-size: 16px; }
   .cnt-ok b { color: var(--green); }
   .cnt-used b { color: var(--red); }
+  .cnt-err b { color: var(--orange); }
 
   /* ---- result overlay ---- */
   #resultOverlay {
@@ -94,7 +92,6 @@
     <h1>סריקת כרטיסים מהירה</h1>
     <p>מצלמים את הברקוד/QR שעל הכרטיס. התוצאה תוצג ישירות על המסך בלי לצאת מהעמוד, כדי לאפשר סריקה רציפה של איש אחד לשנייה־שתיים.</p>
     <button id="startBtn">התחל סריקה</button>
-    <p id="configWarning">⚠️ צריך להגדיר קודם את כתובת ה־PROXY_URL בתוך index.html (ראו worker.js / README).</p>
   </div>
 
   <div id="reader"></div>
@@ -104,6 +101,7 @@
       <span>סה"כ: <b id="cntTotal">0</b></span>
       <span class="cnt-ok">אושרו: <b id="cntOk">0</b></span>
       <span class="cnt-used">כפולים: <b id="cntUsed">0</b></span>
+      <span class="cnt-err">שגיאות: <b id="cntErr">0</b></span>
     </div>
   </div>
 
@@ -121,11 +119,9 @@
 (function () {
   "use strict";
 
-  // ------------------------------------------------------------------
-  // CONFIGURE THIS after deploying worker.js (see README.md)
-  // Example: "https://qr-ticket-proxy.yourname.workers.dev"
-  // ------------------------------------------------------------------
-  const PROXY_URL = "";
+  // The API lives in this same Vercel deployment (see /api/scan.js), so no
+  // separate proxy URL needs to be configured here.
+  const SCAN_ENDPOINT = "/api/scan";
 
   const ALLOWED_HOSTS = ["www.matnas-kz.co.il", "matnas-kz.co.il"];
 
@@ -136,7 +132,6 @@
   const els = {
     startScreen: document.getElementById("startScreen"),
     startBtn: document.getElementById("startBtn"),
-    configWarning: document.getElementById("configWarning"),
     overlay: document.getElementById("resultOverlay"),
     icon: document.getElementById("resultIcon"),
     message: document.getElementById("resultMessage"),
@@ -144,17 +139,15 @@
     cntTotal: document.getElementById("cntTotal"),
     cntOk: document.getElementById("cntOk"),
     cntUsed: document.getElementById("cntUsed"),
+    cntErr: document.getElementById("cntErr"),
   };
 
-  if (!PROXY_URL) {
-    els.configWarning.style.display = "block";
-  }
-
-  const counters = { total: 0, ok: 0, used: 0 };
+  const counters = { total: 0, ok: 0, used: 0, err: 0 };
   function renderCounters() {
     els.cntTotal.textContent = counters.total;
     els.cntOk.textContent = counters.ok;
     els.cntUsed.textContent = counters.used;
+    els.cntErr.textContent = counters.err;
   }
 
   let audioCtx = null;
@@ -224,33 +217,31 @@
     lastScan.text = text;
     lastScan.time = now;
     busy = true;
-    counters.total++;
-    renderCounters();
-
-    if (!PROXY_URL) {
-      showResult("error", "לא הוגדרה כתובת שרת (PROXY_URL)");
-      setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
-      return;
-    }
 
     try {
-      const resp = await fetch(PROXY_URL + "?url=" + encodeURIComponent(text));
+      const resp = await fetch(SCAN_ENDPOINT + "?url=" + encodeURIComponent(text));
       const data = await resp.json();
 
       if (!data.ok) {
         showResult("error", data.message || "שגיאה");
+        counters.err++;
       } else if (data.status === "success") {
+        counters.total++;
         counters.ok++;
         showResult("success", data.message, data);
       } else if (data.status === "used") {
+        counters.total++;
         counters.used++;
         showResult("used", data.message, data);
       } else {
+        counters.total++;
         showResult("unknown", data.message || "תגובה לא ידועה", data);
       }
       renderCounters();
     } catch (e) {
       showResult("error", "שגיאת רשת - נסו שוב");
+      counters.err++;
+      renderCounters();
     } finally {
       setTimeout(() => { busy = false; }, BUSY_LOCK_MS);
     }

@@ -40,7 +40,6 @@
 <h1>רשימת אורחים שנסרקו</h1>
 
 <div id="setup">
-  <input id="proxyUrl" placeholder="כתובת ה-Worker, למשל https://xxx.workers.dev">
   <input id="adminKey" placeholder="מפתח ניהול (ADMIN_KEY)" type="password">
   <button id="loadBtn">טען</button>
   <button id="csvBtn" class="secondary">ייצוא ל-CSV</button>
@@ -70,7 +69,6 @@
   "use strict";
 
   const els = {
-    proxyUrl: document.getElementById("proxyUrl"),
     adminKey: document.getElementById("adminKey"),
     loadBtn: document.getElementById("loadBtn"),
     csvBtn: document.getElementById("csvBtn"),
@@ -83,7 +81,6 @@
   // Per-browser convenience only - not shared with anyone, never read by
   // the guest data itself.
   try {
-    els.proxyUrl.value = localStorage.getItem("qrProxyUrl") || "";
     els.adminKey.value = localStorage.getItem("qrAdminKey") || "";
   } catch (e) {}
 
@@ -94,23 +91,20 @@
     return "לא ידוע";
   }
 
-  function buildUrl(path) {
-    const base = els.proxyUrl.value.trim().replace(/\/+$/, "");
+  function buildUrl(extraParams) {
     const key = encodeURIComponent(els.adminKey.value.trim());
-    return base + path + "?key=" + key;
+    return "/api/guests?key=" + key + (extraParams ? "&" + extraParams : "");
   }
 
   async function load() {
-    const base = els.proxyUrl.value.trim();
-    if (!base) { els.status.textContent = "נא להזין כתובת Worker."; return; }
+    if (!els.adminKey.value.trim()) { els.status.textContent = "נא להזין מפתח ניהול."; return; }
     try {
-      localStorage.setItem("qrProxyUrl", base);
       localStorage.setItem("qrAdminKey", els.adminKey.value.trim());
     } catch (e) {}
 
     els.status.textContent = "טוען...";
     try {
-      const resp = await fetch(buildUrl("/guests"));
+      const resp = await fetch(buildUrl());
       if (resp.status === 401) { els.status.textContent = "מפתח ניהול שגוי."; return; }
       const data = await resp.json();
       if (!data.ok) { els.status.textContent = "שגיאה: " + (data.message || "לא ידוע"); return; }
@@ -159,15 +153,14 @@
 
   els.loadBtn.addEventListener("click", load);
   els.csvBtn.addEventListener("click", () => {
-    if (!els.proxyUrl.value.trim()) { els.status.textContent = "נא להזין כתובת Worker."; return; }
+    if (!els.adminKey.value.trim()) { els.status.textContent = "נא להזין מפתח ניהול."; return; }
     try {
-      localStorage.setItem("qrProxyUrl", els.proxyUrl.value.trim());
       localStorage.setItem("qrAdminKey", els.adminKey.value.trim());
     } catch (e) {}
-    window.location.href = buildUrl("/guests.csv");
+    window.location.href = buildUrl("format=csv");
   });
 
-  if (els.proxyUrl.value && els.adminKey.value) load();
+  if (els.adminKey.value) load();
 })();
 </script>
 </body>

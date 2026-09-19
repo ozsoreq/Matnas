@@ -1,10 +1,10 @@
--- Run this once against your D1 database (Cloudflare dashboard -> D1 ->
--- your database -> Console tab -> paste and execute), before binding it to
--- the worker. See README.md for the full setup steps.
+-- Run this once against your Neon database (Neon console -> your project ->
+-- SQL Editor -> paste and run), before setting DATABASE_URL in Vercel.
+-- See README.md in qr-scanner/ for the full setup steps.
 
 CREATE TABLE IF NOT EXISTS scans (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  scanned_at TEXT NOT NULL,   -- ISO 8601 UTC timestamp of the scan
+  id SERIAL PRIMARY KEY,
+  scanned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   purchaser TEXT,             -- name on the order (שם המזמין)
   order_id TEXT,              -- order number shown on the ticket (סידורי)
   used_count INTEGER,         -- tickets redeemed so far in this order, per the ticket system
@@ -16,4 +16,4 @@ CREATE TABLE IF NOT EXISTS scans (
   did TEXT                    -- raw "did" query param from the scanned QR URL
 );
 
-CREATE INDEX IF NOT EXISTS idx_scans_scanned_at ON scans (scanned_at);
+CREATE INDEX IF NOT EXISTS idx_scans_scanned_at ON scans (scanned_at DESC);
